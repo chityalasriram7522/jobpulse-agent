@@ -1,0 +1,18 @@
+{
+  "locations": [
+    "Hyderabad",
+    "remote"
+  ],
+  "roles": [
+    "Python Developer",
+    "Java Developer",
+    "Full Stack Developer",
+    "AI LLM Engineer"
+  ],
+  "job_types": [
+    "internship",
+    "full-time"
+  ],
+  "stipend_required_for_internship": true,
+  "max_listings_per_run": 30
+}

@@ -1,0 +1,28 @@
+Candidate: Sri Ram Chityala
+Email: sriramchityala7522@gmail.com
+Target Roles: Python Developer, Java Developer, Full-Stack / React Developer, AI / LLM Engineer
+Preferred Locations: Hyderabad, Remote
+
+SUMMARY:
+Software Engineer and AI enthusiast with hands-on experience building clean Python applications, Java backends, React web apps, and LLM-powered agents. Strong focus on clean code, testability, and automated pipelines.
+
+TECHNICAL SKILLS:
+- Languages: Python (3.11+), Java, SQL, JavaScript, HTML5/CSS3
+- AI & LLMs: Google Gemini API (google-genai SDK), Prompt Engineering, Structured JSON Outputs, Retrieval-Augmented Generation (RAG)
+- Backend & Frameworks: FastAPI, Flask, Spring Boot, RESTful APIs, SQLite, PostgreSQL
+- Tools & DevOps: Git, GitHub Actions, Docker, Linux, VS Code
+
+EXPERIENCE & PROJECTS:
+1. JobPulse - AI-Powered Job & Internship Digest Agent:
+   - Created an autonomous Python agent that pulls job postings from the Adzuna API, filters against user resume using Gemini 2.5 Flash with structured JSON output, and alerts via Telegram bot.
+   - Designed persistent SQLite memory for zero duplicates and automated via daily GitHub Actions cron.
+
+2. Full-Stack Web Application (React & Java Spring Boot):
+   - Developed responsive REST application with authenticated user workflows and CRUD operations.
+   - Managed relational schemas with PostgreSQL and integrated automated unit tests.
+
+3. Document Insights Assistant (Python & Gemini):
+   - Designed an interactive CLI assistant to summarize and extract structured data from PDF and text documents using Gemini API.
+
+EDUCATION:
+Bachelor of Technology (B.Tech) in Computer Science and Engineering
