@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
 # Import local tools and database memory
-from tools import fetch_jobs, send_telegram
+from tools import fetch_jobs, send_telegram, send_notification
 import db
 
 # Load local environment variables
@@ -361,7 +361,10 @@ def run_agent(dry_run: bool = False, db_path: str = "sent_jobs.db") -> int:
             logger.error("Error fetching jobs for '%s': %s", role, err)
 
     if not all_jobs:
-        logger.error("No jobs could be retrieved from Adzuna.")
+        error_msg = "No fresh jobs could be retrieved from job sources."
+        logger.error(error_msg)
+        if not dry_run:
+            send_notification(f"⚠️ JobPulse failed: {error_msg}", title="JobPulse Failed")
         return 1
 
     logger.info("Total fresh listings retrieved: %d", len(all_jobs))
@@ -385,8 +388,10 @@ def run_agent(dry_run: bool = False, db_path: str = "sent_jobs.db") -> int:
             max_matches=5
         )
     except Exception as exc:
-        error_msg = f"JobPulse failed: Gemini matching error - {exc}"
-        logger.error(error_msg)
+        error_msg = f"Gemini matching error: {exc}"
+        logger.error("JobPulse failed: %s", error_msg)
+        if not dry_run:
+            send_notification(f"⚠️ JobPulse failed: {error_msg}", title="JobPulse Failed")
         return 1
 
     # Step 5: Display or Deliver
@@ -398,12 +403,20 @@ def run_agent(dry_run: bool = False, db_path: str = "sent_jobs.db") -> int:
         print("=" * 65)
         print(digest)
         print("=" * 65)
-        print("\n[Notice] --dry-run active: Database and Telegram were NOT modified.")
+        print("\n[Notice] --dry-run active: Database and Notifications were NOT modified.")
         return 0
 
-    # Save newly sent jobs to SQLite memory (Stage 4 will also send to Telegram)
+    # Step 6: Deliver Notification
+    logger.info("Delivering digest to configured channels...")
+    try:
+        send_notification(digest, title="✨ JobPulse Daily Job Digest")
+    except Exception as deliv_err:
+        logger.error("Notification delivery failed: %s", deliv_err)
+        return 1
+
+    # Step 7: Save newly sent jobs to SQLite memory
     saved_count = db.save_sent_jobs(matches, db_path=db_path)
-    logger.info("Digest prepared with %d matches (recorded %d to sent_jobs).", len(matches), saved_count)
+    logger.info("Digest completed with %d matches (saved %d to sent_jobs).", len(matches), saved_count)
     return 0
 
 

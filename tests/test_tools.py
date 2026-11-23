@@ -4,7 +4,7 @@ Unit tests for tools.py (fetch_jobs)
 
 import pytest
 from unittest.mock import patch, MagicMock
-from tools import fetch_jobs, _fetch_from_adzuna, _fetch_from_free_apis
+from tools import fetch_jobs, _fetch_from_adzuna, _fetch_from_free_apis, send_telegram, send_ntfy, send_notification
 
 
 @pytest.fixture
@@ -95,3 +95,59 @@ def test_fetch_jobs_free_api_fallback(monkeypatch):
         assert jobs[0]["title"] == "Backend Python Engineer"
         assert jobs[0]["company"] == "Open Source Tech"
         assert jobs[0]["redirect_url"] == "https://remotive.com/job/999"
+
+
+# -------------------------------------------------------------
+# Test Delivery & Alert Tools
+# -------------------------------------------------------------
+
+def test_send_telegram_success(monkeypatch):
+    """Test successful Telegram message delivery."""
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123456:ABC-DEF")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "987654321")
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.raise_for_status.return_value = None
+
+    with patch("requests.post", return_value=mock_resp) as mock_post:
+        success = send_telegram("Hello Telegram!")
+        assert success is True
+        mock_post.assert_called_once()
+        args, kwargs = mock_post.call_args
+        assert "123456:ABC-DEF" in args[0]
+        assert kwargs["json"]["chat_id"] == "987654321"
+        assert kwargs["json"]["text"] == "Hello Telegram!"
+
+
+def test_send_telegram_missing_credentials(monkeypatch):
+    """Test that missing credentials returns False without crashing."""
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
+
+    success = send_telegram("Hello!")
+    assert success is False
+
+
+def test_send_ntfy_success():
+    """Test successful push notification via ntfy."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.raise_for_status.return_value = None
+
+    with patch("requests.post", return_value=mock_resp) as mock_post:
+        success = send_ntfy("New job alert", title="JobPulse Test", topic="test-topic")
+        assert success is True
+        mock_post.assert_called_once()
+        args, kwargs = mock_post.call_args
+        assert "https://ntfy.sh/test-topic" in args[0]
+        assert kwargs["headers"]["Title"] == "JobPulse Test"
+
+
+def test_send_notification_dispatches_successfully():
+    """Test unified send_notification dispatches message."""
+    with patch("tools.send_ntfy", return_value=True) as mock_ntfy, \
+         patch("tools.send_telegram", return_value=True) as mock_tg:
+        success = send_notification("Digest text")
+        assert success is True
+        mock_ntfy.assert_called_once()
