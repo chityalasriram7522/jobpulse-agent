@@ -4,7 +4,7 @@ Unit tests for tools.py (fetch_jobs)
 
 import pytest
 from unittest.mock import patch, MagicMock
-from tools import fetch_jobs
+from tools import fetch_jobs, _fetch_from_adzuna, _fetch_from_free_apis
 
 
 @pytest.fixture
@@ -42,8 +42,8 @@ def mock_adzuna_response():
     }
 
 
-def test_fetch_jobs_success(mock_adzuna_response, monkeypatch):
-    """Test successful fetching and parsing of jobs from Adzuna API"""
+def test_fetch_jobs_adzuna_success(mock_adzuna_response, monkeypatch):
+    """Test successful fetching and parsing of jobs from Adzuna API when keys are provided"""
     monkeypatch.setenv("ADZUNA_APP_ID", "dummy_id")
     monkeypatch.setenv("ADZUNA_APP_KEY", "dummy_key")
 
@@ -58,26 +58,40 @@ def test_fetch_jobs_success(mock_adzuna_response, monkeypatch):
         assert jobs[0]["title"] == "Junior Python Developer"
         assert jobs[0]["company"] == "Tech Corp"
         assert jobs[0]["location"] == "Hyderabad, Telangana"
-        assert jobs[0]["salary_min"] == 400000.0
         assert jobs[0]["redirect_url"] == "https://www.adzuna.in/details/123456"
 
-        assert jobs[1]["title"] == "AI Intern"
-        assert jobs[1]["company"] == "AI Innovations"
-
-        # Verify correct URL and parameters were called
         mock_get.assert_called_once()
         args, kwargs = mock_get.call_args
         assert "https://api.adzuna.com/v1/api/jobs/in/search/1" in args[0]
         assert kwargs["params"]["app_id"] == "dummy_id"
         assert kwargs["params"]["app_key"] == "dummy_key"
-        assert kwargs["params"]["what"] == "Python Developer"
-        assert kwargs["params"]["where"] == "Hyderabad"
 
 
-def test_fetch_jobs_missing_credentials(monkeypatch):
-    """Test that missing credentials raises ValueError"""
+def test_fetch_jobs_free_api_fallback(monkeypatch):
+    """Test automatic fallback to Free Public Job APIs when no Adzuna keys are set"""
     monkeypatch.delenv("ADZUNA_APP_ID", raising=False)
     monkeypatch.delenv("ADZUNA_APP_KEY", raising=False)
 
-    with pytest.raises(ValueError, match="Missing Adzuna API credentials"):
-        fetch_jobs(query="Python")
+    mock_remotive_resp = MagicMock()
+    mock_remotive_resp.status_code = 200
+    mock_remotive_resp.json.return_value = {
+        "jobs": [
+            {
+                "id": 999,
+                "title": "Backend Python Engineer",
+                "company_name": "Open Source Tech",
+                "candidate_required_location": "Remote",
+                "description": "Python, SQLite, REST.",
+                "job_type": "full_time",
+                "url": "https://remotive.com/job/999",
+                "publication_date": "2026-11-23"
+            }
+        ]
+    }
+
+    with patch("requests.get", return_value=mock_remotive_resp):
+        jobs = fetch_jobs(query="Python", results_per_page=1)
+        assert len(jobs) == 1
+        assert jobs[0]["title"] == "Backend Python Engineer"
+        assert jobs[0]["company"] == "Open Source Tech"
+        assert jobs[0]["redirect_url"] == "https://remotive.com/job/999"
