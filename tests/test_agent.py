@@ -183,7 +183,28 @@ def test_format_digest(valid_matches_json):
     assert "https://www.adzuna.in/details/1" in digest
 
 
-def test_run_agent_dry_run():
+def test_run_agent_dry_run(sample_jobs, valid_matches_json):
     """Test running agent in dry-run mode succeeds with exit code 0."""
-    exit_code = run_agent(dry_run=True)
-    assert exit_code == 0
+    with patch("agent.fetch_jobs", return_value=sample_jobs), \
+         patch("agent.match_and_rank_jobs", return_value=valid_matches_json):
+        exit_code = run_agent(dry_run=True)
+        assert exit_code == 0
+
+
+def test_dedup_across_runs(tmp_path, sample_jobs, valid_matches_json):
+    """Test that running the agent saves jobs and second run drops them."""
+    test_db = str(tmp_path / "sent_jobs.db")
+
+    with patch("agent.fetch_jobs", return_value=sample_jobs), \
+         patch("agent.match_and_rank_jobs", return_value=valid_matches_json):
+        # Run 1: Saves matches
+        code1 = run_agent(dry_run=False, db_path=test_db)
+        assert code1 == 0
+
+    # Run 2: Incoming jobs have same URLs, so filter_new_jobs drops them
+    with patch("agent.fetch_jobs", return_value=sample_jobs), \
+         patch("agent.match_and_rank_jobs") as mock_rank:
+        code2 = run_agent(dry_run=False, db_path=test_db)
+        assert code2 == 0
+        # Gemini should NOT be called on Run 2 because all jobs were already sent!
+        mock_rank.assert_not_called()

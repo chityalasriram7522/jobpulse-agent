@@ -1,13 +1,15 @@
 {
   "locations": [
     "Hyderabad",
-    "remote"
+    "Remote",
+    "India"
   ],
   "roles": [
-    "Python Developer",
     "Java Developer",
-    "Full Stack Developer",
-    "AI LLM Engineer"
+    "Python Developer",
+    "React Developer",
+    "AI Agent Engineer",
+    "Software Engineer Intern"
   ],
   "job_types": [
     "internship",

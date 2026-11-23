@@ -19,8 +19,9 @@ from typing import Any, Dict, List, Optional, Set
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
-# Import local tools
+# Import local tools and database memory
 from tools import fetch_jobs, send_telegram
+import db
 
 # Load local environment variables
 load_dotenv()
@@ -260,12 +261,15 @@ def format_digest(matches: List[Dict[str, str]]) -> str:
     return "\n".join(lines).strip()
 
 
-def run_agent(dry_run: bool = False) -> int:
+def run_agent(dry_run: bool = False, db_path: str = "sent_jobs.db") -> int:
     """
     Main agent execution flow for JobPulse.
     Returns 0 on success, non-zero on failure.
     """
-    logger.info("Starting JobPulse Agent (dry_run=%s)", dry_run)
+    logger.info("Starting JobPulse Agent (dry_run=%s, db_path=%s)", dry_run, db_path)
+
+    # Initialize SQLite memory
+    db.init_db(db_path)
 
     # Step 1: Load inputs
     try:
@@ -362,10 +366,20 @@ def run_agent(dry_run: bool = False) -> int:
 
     logger.info("Total fresh listings retrieved: %d", len(all_jobs))
 
-    # Step 3: Rank with Gemini
+    # Step 3: SQLite Deduplication Memory (Drop jobs already sent)
+    unsent_jobs = db.filter_new_jobs(all_jobs, db_path=db_path)
+    if not unsent_jobs:
+        logger.info("All retrieved jobs have already been sent in previous runs. No new jobs today.")
+        if dry_run:
+            print("\n[JobPulse] All retrieved jobs have already been sent in previous runs. Zero duplicates found.")
+        return 0
+
+    logger.info("Unsent listings to rank with Gemini: %d", len(unsent_jobs))
+
+    # Step 4: Rank with Gemini
     try:
         matches = match_and_rank_jobs(
-            jobs=all_jobs,
+            jobs=unsent_jobs,
             resume_text=resume_text,
             preferences=preferences,
             max_matches=5
@@ -375,7 +389,7 @@ def run_agent(dry_run: bool = False) -> int:
         logger.error(error_msg)
         return 1
 
-    # Step 4: Display or Deliver
+    # Step 5: Display or Deliver
     digest = format_digest(matches)
 
     if dry_run:
@@ -384,10 +398,12 @@ def run_agent(dry_run: bool = False) -> int:
         print("=" * 65)
         print(digest)
         print("=" * 65)
+        print("\n[Notice] --dry-run active: Database and Telegram were NOT modified.")
         return 0
 
-    # Telegram send will be hooked up in Stage 4
-    logger.info("Digest prepared with %d matches.", len(matches))
+    # Save newly sent jobs to SQLite memory (Stage 4 will also send to Telegram)
+    saved_count = db.save_sent_jobs(matches, db_path=db_path)
+    logger.info("Digest prepared with %d matches (recorded %d to sent_jobs).", len(matches), saved_count)
     return 0
 
 

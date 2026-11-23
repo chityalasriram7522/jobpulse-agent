@@ -1,28 +1,43 @@
-Candidate: Sri Ram Chityala
+CHITYALA SRI RAM
+Phone: +91-7416507522
 Email: sriramchityala7522@gmail.com
-Target Roles: Python Developer, Java Developer, Full-Stack / React Developer, AI / LLM Engineer
-Preferred Locations: Hyderabad, Remote
+Location: Hyderabad, India
+LinkedIn: linkedin
+GitHub: Github
 
 SUMMARY:
-Software Engineer and AI enthusiast with hands-on experience building clean Python applications, Java backends, React web apps, and LLM-powered agents. Strong focus on clean code, testability, and automated pipelines.
+Computer Science undergraduate with strong foundations in Data Structures, Algorithms, Object-Oriented Programming. Experienced in developing scalable web applications using Python, Java, React.js, JavaScript, SQL, and cloud technologies. Hands-on experience building real-world software solutions involving CRUD operations, database integration, responsive user interfaces, and problem-solving. Passionate about software development, AI agents, and building high-quality applications at scale.
 
-TECHNICAL SKILLS:
-- Languages: Python (3.11+), Java, SQL, JavaScript, HTML5/CSS3
-- AI & LLMs: Google Gemini API (google-genai SDK), Prompt Engineering, Structured JSON Outputs, Retrieval-Augmented Generation (RAG)
-- Backend & Frameworks: FastAPI, Flask, Spring Boot, RESTful APIs, SQLite, PostgreSQL
-- Tools & DevOps: Git, GitHub Actions, Docker, Linux, VS Code
+SKILLS:
+- Programming Languages: Java, Python
+- Core Concepts: Data Structures & Algorithms Fundamentals, Object-Oriented Programming (OOP), REST APIs
+- Frontend Technologies: React.js, JavaScript, HTML5, CSS3
+- Databases: MySQL, SQLite
+- AI & Emerging Technologies: Large Language Models (LLMs), Retrieval-Augmented Generation (RAG), AI Agents, Model Context Protocol (MCP)
+- Tools & Platforms: Git, GitHub, AWS, VS Code
 
-EXPERIENCE & PROJECTS:
-1. JobPulse - AI-Powered Job & Internship Digest Agent:
-   - Created an autonomous Python agent that pulls job postings from the Adzuna API, filters against user resume using Gemini 2.5 Flash with structured JSON output, and alerts via Telegram bot.
-   - Designed persistent SQLite memory for zero duplicates and automated via daily GitHub Actions cron.
+PROJECTS:
+1. Hospital Management Assistant | REACT, WEB SPEECH API (Jan 2026 – Feb 2026)
+   - Designed and developed an AI-powered healthcare management platform supporting patient triage, symptom assessment, appointment scheduling, and pharmacy workflow automation.
+   - Implemented voice-enabled interactions using Web Speech API and Speech Synthesis for improved accessibility and user experience.
 
-2. Full-Stack Web Application (React & Java Spring Boot):
-   - Developed responsive REST application with authenticated user workflows and CRUD operations.
-   - Managed relational schemas with PostgreSQL and integrated automated unit tests.
+2. Claimly: Smart-claims-Zero-denials | PYTHON — ML (Nov 2024 – Dec 2024)
+   - Designed and developed a Provider Claim Denial Prevention Companion to help identify and prevent potential healthcare insurance claim denials.
+   - The system analyzes claim-related data and detects possible errors or issues before claim submission to improve claim accuracy and reduce denials.
 
-3. Document Insights Assistant (Python & Gemini):
-   - Designed an interactive CLI assistant to summarize and extract structured data from PDF and text documents using Gemini API.
+3. Gita AI: Multimodal Conversational Agent, RAG System (Jun 2025 – July 2025)
+   - Developed a high-performance, bilingual Bhagavad Gita web application combining modern web standards with AI and DOM-augmented context retrieval for 700+ verses.
+   - Engineered a bilingual (English / Telugu) Multimodal AI Agent and RAG system powered by Google Gemini 1.5 Flash and a custom offline NLP engine with real-time speech-to-speech voice interaction.
 
 EDUCATION:
-Bachelor of Technology (B.Tech) in Computer Science and Engineering
+- B.Tech in Computer Science and Engineering (2023 – Present)
+  Malla Reddy Engineering College, Hyderabad | CGPA: 8.59 / 10
+- Board of Intermediate Education - MPC (2021 – 2021)
+  S R Junior College, Adilabad | Marks: 934 / 1000
+- Board of Secondary School (2020 – 2021)
+  New Arunodaya High School, Adilabad | GPA: 10 / 10
+
+AWARDS & CERTIFICATIONS:
+- Java Certification: Java Programming Certification – Udemy (2026): Demonstrated proficiency in OOP, Collections Framework, Exception Handling, and Java application development.
+- AWS Cloud Practitioner – Amazon Web Services (2026): Foundational knowledge of cloud computing, AWS core services, security, pricing, and cloud architecture principles.
+- Oracle Agentic AI Foundations Associate – Oracle University (2026): Foundational knowledge of AI agents, LLMs, RAGs, Model Context Protocol (MCP), and enterprise AI solutions.
