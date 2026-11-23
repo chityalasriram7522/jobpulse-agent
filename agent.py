@@ -159,7 +159,13 @@ def match_and_rank_jobs(
     if not api_key:
         raise ValueError("Missing GEMINI_API_KEY. Please set it in your .env file or environment.")
 
-    model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    primary_model = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+    # Model fallback list to ensure zero-downtime if a model experiences temporary high demand
+    models_to_try = [primary_model]
+    for fallback in ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.8-flash"]:
+        if fallback not in models_to_try:
+            models_to_try.append(fallback)
+
     client = genai.Client(api_key=api_key)
 
     # Prepare available links for validation
@@ -197,34 +203,39 @@ def match_and_rank_jobs(
         temperature=0.2,
     )
 
-    # Attempt 1: Call Gemini
     last_error: Optional[Exception] = None
-    for attempt in (1, 2):
-        logger.info("Sending %d jobs to Gemini (%s) for ranking [Attempt %d/2]...", len(jobs), model_name, attempt)
-        try:
-            current_prompt = user_prompt
-            if attempt == 2 and last_error:
-                current_prompt += f"\n\nNOTE: Your previous response was invalid with error: {last_error}. Please correct it and return only a valid JSON array matching the schema."
+    for model_name in models_to_try:
+        for attempt in (1, 2):
+            logger.info("Sending %d jobs to Gemini (%s) for ranking [Attempt %d/2]...", len(jobs), model_name, attempt)
+            try:
+                current_prompt = user_prompt
+                if attempt == 2 and last_error:
+                    current_prompt += f"\n\nNOTE: Your previous response was invalid with error: {last_error}. Please correct it and return only a valid JSON array matching the schema."
 
-            response = client.models.generate_content(
-                model=model_name,
-                contents=current_prompt,
-                config=config
-            )
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=current_prompt,
+                    config=config
+                )
 
-            raw_text = response.text or ""
-            logger.debug("Raw Gemini response: %s", raw_text)
+                raw_text = response.text or ""
+                logger.debug("Raw Gemini response: %s", raw_text)
 
-            matches = validate_job_matches(raw_text, allowed_links=allowed_links, max_matches=max_matches)
-            logger.info("Gemini successfully matched and ranked %d jobs", len(matches))
-            return matches
+                matches = validate_job_matches(raw_text, allowed_links=allowed_links, max_matches=max_matches)
+                logger.info("Gemini (%s) successfully matched and ranked %d jobs", model_name, len(matches))
+                return matches
 
-        except Exception as exc:
-            logger.warning("Attempt %d failed with error: %s", attempt, exc)
-            last_error = exc
-            if attempt == 2:
-                logger.error("Failed to obtain valid JSON from Gemini after 2 attempts.")
-                raise RuntimeError(f"Gemini job matching failed: {last_error}") from last_error
+            except Exception as exc:
+                logger.warning("Model %s Attempt %d failed: %s", model_name, attempt, exc)
+                last_error = exc
+                err_str = str(exc)
+                # If model is unavailable (503) or not found (404), break immediately to try next model
+                if "503" in err_str or "UNAVAILABLE" in err_str or "404" in err_str:
+                    logger.info("Model %s unavailable, switching to next model...", model_name)
+                    break
+
+    logger.error("Failed to obtain valid JSON from Gemini across models: %s", models_to_try)
+    raise RuntimeError(f"Gemini job matching failed: {last_error}") from last_error
 
     return []
 
@@ -276,8 +287,8 @@ def run_agent(dry_run: bool = False) -> int:
     adzuna_key = os.getenv("ADZUNA_APP_KEY")
     gemini_key = os.getenv("GEMINI_API_KEY")
 
-    # If keys are missing and running in dry-run, provide fallback demonstration
-    if dry_run and (not adzuna_id or not adzuna_key or not gemini_key):
+    # If Gemini API key is missing and running in dry-run, provide fallback demonstration
+    if dry_run and not gemini_key:
         print("\n" + "=" * 65)
         print("JobPulse --dry-run (Demonstration Mode - API Keys not yet configured)")
         print("=" * 65)
