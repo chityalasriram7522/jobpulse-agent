@@ -10,6 +10,7 @@ from agent import (
     match_and_rank_jobs,
     format_digest,
     run_agent,
+    sanitize_resume_text,
     JobMatch
 )
 
@@ -66,9 +67,20 @@ def valid_matches_json():
     ]
 
 
-# -------------------------------------------------------------
-# Test JSON Validation
-# -------------------------------------------------------------
+def test_sanitize_resume_text():
+    """Verify that personal contact PII (emails and phone numbers) are stripped."""
+    raw_resume = (
+        "Name: John Doe\n"
+        "Phone: +91-7416507522\n"
+        "Email: myemail@gmail.com\n"
+        "Skills: Python, Java, SQL"
+    )
+    sanitized = sanitize_resume_text(raw_resume)
+    assert "+91-7416507522" not in sanitized
+    assert "myemail@gmail.com" not in sanitized
+    assert "[EMAIL REDACTED]" in sanitized
+    assert "[PHONE REDACTED]" in sanitized
+    assert "Python, Java, SQL" in sanitized
 
 def test_validate_job_matches_valid(valid_matches_json):
     """Test that a valid JSON structure parses correctly."""

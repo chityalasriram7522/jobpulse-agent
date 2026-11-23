@@ -68,13 +68,27 @@ def load_preferences(filepath: str = "preferences.json") -> Dict[str, Any]:
         return json.load(f)
 
 
+def sanitize_resume_text(text: str) -> str:
+    """
+    Sanitize resume text to protect user privacy (PII Redaction):
+    Removes phone numbers, email addresses, and personal contact details.
+    Ensures that only professional skills, education, and projects are evaluated.
+    """
+    # Scrub email addresses
+    sanitized = re.sub(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", "[EMAIL REDACTED]", text)
+    # Scrub phone numbers (international or standard 10-digit formats)
+    sanitized = re.sub(r"(?:\+?\d{1,3}[-.\s]?)?\(?\d{3,5}\)?[-.\s]?\d{3,5}[-.\s]?\d{3,5}", "[PHONE REDACTED]", sanitized)
+    return sanitized
+
+
 def load_resume(filepath: str = "resume.txt") -> str:
-    """Load resume text from file."""
+    """Load resume text from file and sanitize all personal contact PI."""
     if not os.path.exists(filepath):
         logger.warning("Resume file '%s' not found. Using fallback text.", filepath)
         return "Experienced Python and Java developer with interest in AI/LLMs and full-stack development."
     with open(filepath, "r", encoding="utf-8") as f:
-        return f.read().strip()
+        raw_text = f.read().strip()
+        return sanitize_resume_text(raw_text)
 
 
 def validate_job_matches(
