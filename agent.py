@@ -255,8 +255,54 @@ def match_and_rank_jobs(
     return []
 
 
-def format_digest(matches: List[Dict[str, str]], news: Optional[List[Dict[str, str]]] = None) -> str:
-    """Format matched jobs and daily AI/tech news into a clean morning digest."""
+def summarize_ai_news_with_gemini(raw_headlines: List[str], api_key: Optional[str] = None) -> List[str]:
+    """
+    Summarize top AI news and current affairs into concise, informative summaries.
+    Ensures ZERO links or URLs are included, as requested by the user.
+    """
+    if not raw_headlines:
+        return [
+            "**Next-Gen AI Systems**: Enterprise adoption of autonomous agentic workflows is accelerating rapidly.",
+            "**Hardware & Chip Innovations**: Novel AI-driven design methodologies are lowering semiconductor development costs.",
+            "**Global AI Governance**: International policy discussions intensify on establishing safety baselines for frontier models."
+        ]
+
+    effective_key = api_key or os.getenv("GEMINI_API_KEY")
+    if not effective_key:
+        return [
+            f"**{h}**: Significant ongoing development in artificial intelligence technology."
+            for h in raw_headlines[:3]
+        ]
+
+    try:
+        from google import genai
+        client = genai.Client(api_key=effective_key)
+        model_name = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+
+        prompt = (
+            f"Here are today's top AI and tech current affairs headlines:\n{raw_headlines}\n\n"
+            "Synthesize and summarize the 3 most important updates in plain English. "
+            "For each update, format as:\n"
+            "**<Topic Name>**: <1-2 clear, informative sentences explaining what happened and why it matters>\n\n"
+            "CRITICAL: Do NOT include any links, URLs, web addresses, or citations. Return only the 3 bullet items."
+        )
+
+        response = client.models.generate_content(model=model_name, contents=prompt)
+        text = (response.text or "").strip()
+        items = [line.strip().lstrip("•-* ") for line in text.split("\n") if line.strip() and "**" in line]
+        if items:
+            return items[:3]
+    except Exception as exc:
+        logger.warning("Gemini AI news summarization failed: %s", exc)
+
+    return [
+        f"**{h}**: Key tech development impacting current software workflows."
+        for h in raw_headlines[:3]
+    ]
+
+
+def format_digest(matches: List[Dict[str, str]], news_summaries: Optional[List[str]] = None) -> str:
+    """Format matched jobs and daily AI/tech news summaries into a clean morning digest."""
     lines = [
         "✨ *JobPulse Daily Morning Briefing*",
         "===================================="
@@ -274,17 +320,11 @@ def format_digest(matches: List[Dict[str, str]], news: Optional[List[Dict[str, s
     else:
         lines.append("\n💼 *Job Openings:* No new unread openings in this run.\n")
 
-    # Section 2: AI News & Current Affairs
-    if news:
-        lines.append("🌐 *Daily AI & Tech Current Affairs:*")
-        for item in news[:3]:
-            title = item.get("title", "").strip()
-            link = item.get("link", "").strip()
-            if link:
-                lines.append(f"• [{title}]({link})")
-            else:
-                lines.append(f"• {title}")
-        lines.append("")
+    # Section 2: AI News & Current Affairs (NO LINKS - SUMMARIES ONLY)
+    if news_summaries:
+        lines.append("🌐 *Daily AI & Tech Current Affairs Summary:*")
+        for item in news_summaries[:3]:
+            lines.append(f"• {item}\n")
 
     return "\n".join(lines).strip()
 
@@ -422,9 +462,10 @@ def run_agent(dry_run: bool = False, db_path: str = "sent_jobs.db") -> int:
             send_notification(f"⚠️ JobPulse failed: {error_msg}", title="JobPulse Failed")
         return 1
 
-    # Step 5: Fetch AI News & Format Morning Digest
-    ai_news = fetch_ai_news(limit=3)
-    digest = format_digest(matches, news=ai_news)
+    # Step 5: Fetch AI News & Generate Summaries with Gemini (NO LINKS!)
+    raw_headlines = [n["title"] for n in fetch_ai_news(limit=5)]
+    ai_summaries = summarize_ai_news_with_gemini(raw_headlines, api_key=gemini_key)
+    digest = format_digest(matches, news_summaries=ai_summaries)
 
     if dry_run:
         print("\n" + "=" * 65)

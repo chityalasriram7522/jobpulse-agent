@@ -186,14 +186,14 @@ def test_match_and_rank_jobs_fails_after_retries(sample_jobs, monkeypatch):
 # -------------------------------------------------------------
 
 def test_format_digest(valid_matches_json):
-    """Test formatting output for digest including AI news section."""
-    news = [{"title": "Major Breakthrough in Autonomous AI Agents", "link": "https://example.com/ai-news"}]
-    digest = format_digest(valid_matches_json, news=news)
+    """Test formatting output for digest including AI news summary section without links."""
+    summaries = ["**Autonomous AI Agents**: Breakthroughs in multi-agent workflows show major enterprise efficiency gains."]
+    digest = format_digest(valid_matches_json, news_summaries=summaries)
     assert "JobPulse Daily Morning Briefing" in digest
     assert "Junior Python Developer" in digest
     assert "Tech Corp" in digest
-    assert "Daily AI & Tech Current Affairs" in digest
-    assert "Major Breakthrough in Autonomous AI Agents" in digest
+    assert "Daily AI & Tech Current Affairs Summary" in digest
+    assert "Autonomous AI Agents" in digest
 
 
 def test_run_agent_dry_run(sample_jobs, valid_matches_json):
