@@ -283,8 +283,9 @@ def summarize_ai_news_with_gemini(raw_headlines: List[str], api_key: Optional[st
             f"Here are today's top AI and tech current affairs headlines:\n{raw_headlines}\n\n"
             "Synthesize and summarize the 3 most important updates in plain English. "
             "For each update, format as:\n"
-            "**<Topic Name>**: <1-2 clear, informative sentences explaining what happened and why it matters>\n\n"
-            "CRITICAL: Do NOT include any links, URLs, web addresses, or citations. Return only the 3 bullet items."
+            "**<Topic Name>**: <1 clear, punchy sentence explaining what happened and why it matters>\n\n"
+            "CRITICAL: Keep each summary to exactly 1 concise sentence so it fits mobile screens perfectly. "
+            "Do NOT include any links, URLs, web addresses, or citations. Return only the 3 bullet items."
         )
 
         response = client.models.generate_content(model=model_name, contents=prompt)
@@ -479,7 +480,15 @@ def run_agent(dry_run: bool = False, db_path: str = "sent_jobs.db") -> int:
     # Step 6: Deliver Notification
     logger.info("Delivering digest to configured channels...")
     try:
-        send_notification(digest, title="✨ JobPulse Daily Job Digest")
+        # Deliver in clean, mobile-optimized cards so neither jobs nor news gets truncated on mobile screens!
+        if matches:
+            job_digest = format_digest(matches)
+            send_notification(job_digest, title="JobPulse: Job Matches")
+        if ai_summaries:
+            news_digest = "🌐 *Daily AI & Tech Current Affairs Summary:*\n\n" + "\n\n".join([f"• {s}" for s in ai_summaries])
+            send_notification(news_digest, title="JobPulse: AI Briefing")
+        if not matches and not ai_summaries:
+            send_notification(digest, title="JobPulse Morning Briefing")
     except Exception as deliv_err:
         logger.error("Notification delivery failed: %s", deliv_err)
         return 1
