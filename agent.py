@@ -350,6 +350,18 @@ def summarize_ai_news_with_gemini(raw_headlines: List[str], api_key: Optional[st
     ]
 
 
+def format_job_card(jobs: List[Dict[str, str]], header: str, start_index: int = 1) -> str:
+    """Format a small batch of jobs (2-3 jobs) cleanly so mobile notification cards never truncate."""
+    lines = [f"💼 *{header}*\n"]
+    for offset, job in enumerate(jobs):
+        idx = start_index + offset
+        lines.append(f"{idx}. *{job['title']}* @ *{job['company']}*")
+        lines.append(f"   📍 {job['location']} | 💰 {job['stipend_or_salary']}")
+        lines.append(f"   💡 {job['match_reason']}")
+        lines.append(f"   🔗 [View & Apply]({job['link']})\n")
+    return "\n".join(lines).strip()
+
+
 def format_digest(matches: List[Dict[str, str]], news_summaries: Optional[List[str]] = None) -> str:
     """Format matched jobs and daily AI/tech news summaries into a clean morning digest."""
     lines = [
@@ -362,9 +374,8 @@ def format_digest(matches: List[Dict[str, str]], news_summaries: Optional[List[s
         lines.append(f"\n💼 *Top {len(matches)} Matching Openings in India (Hyderabad, Bengaluru, Mumbai, Pune, Chennai):*\n")
         for idx, job in enumerate(matches, start=1):
             lines.append(f"{idx}. *{job['title']}* @ *{job['company']}*")
-            lines.append(f"   📍 Location: {job['location']}")
-            lines.append(f"   💰 Compensation: {job['stipend_or_salary']}")
-            lines.append(f"   💡 Match Reason: {job['match_reason']}")
+            lines.append(f"   📍 {job['location']} | 💰 {job['stipend_or_salary']}")
+            lines.append(f"   💡 {job['match_reason']}")
             lines.append(f"   🔗 [View & Apply]({job['link']})\n")
     else:
         lines.append("\n💼 *Job Openings:* No new unread openings in this run.\n")
@@ -468,15 +479,25 @@ def run_agent(dry_run: bool = False, db_path: str = "sent_jobs.db") -> int:
         return 0
 
     # Step 6: Deliver Notification
-    logger.info("Delivering digest to configured channels...")
+    logger.info("Delivering digest to configured channels in mobile-optimized split cards...")
     try:
-        # Deliver in clean, mobile-optimized cards so neither jobs nor news gets truncated on mobile screens!
+        # Deliver in mobile-optimized split cards (Jobs 1-3, Jobs 4-5, and AI News) so ZERO truncation occurs on mobile!
         if matches:
-            job_digest = format_digest(matches)
-            send_notification(job_digest, title="JobPulse: India Job Matches")
+            part1 = matches[:3]
+            part2 = matches[3:]
+
+            if part1:
+                card1 = format_job_card(part1, "Top Matches for Sri Ram (Part 1/2)", start_index=1)
+                send_notification(card1, title="JobPulse: Top Openings (1/2)")
+
+            if part2:
+                card2 = format_job_card(part2, "Top Matches for Sri Ram (Part 2/2)", start_index=4)
+                send_notification(card2, title="JobPulse: Top Openings (2/2)")
+
         if ai_summaries:
             news_digest = "🌐 *Daily AI & Tech Current Affairs Summary:*\n\n" + "\n\n".join([f"• {s}" for s in ai_summaries])
             send_notification(news_digest, title="JobPulse: AI Briefing")
+
         if not matches and not ai_summaries:
             send_notification(digest, title="JobPulse Morning Briefing")
     except Exception as deliv_err:
