@@ -1,15 +1,20 @@
 {
   "locations": [
     "Hyderabad",
-    "Remote",
-    "India"
+    "Bengaluru",
+    "Mumbai",
+    "Pune",
+    "Chennai"
   ],
+  "country": "India",
+  "india_only": true,
   "roles": [
     "Java Developer",
     "Python Developer",
     "React Developer",
     "AI Agent Engineer",
-    "Software Engineer Intern"
+    "Software Engineer Intern",
+    "Full Stack Developer"
   ],
   "job_types": [
     "internship",

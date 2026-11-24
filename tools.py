@@ -2,12 +2,13 @@
 JobPulse Tools Module
 ---------------------
 Helper functions for:
-1. Fetching job listings:
+1. Fetching job & internship listings strictly for target India locations:
+   - Hyderabad, Bengaluru (Bangalore), Mumbai, Pune, Chennai in India ONLY.
    - Uses Adzuna Jobs API if ADZUNA_APP_ID & ADZUNA_APP_KEY are provided.
-   - Automatically aggregates from 100% Free Public Job Feeds:
-     * RemoteOK (100+ fresh developer roles)
-     * Arbeitnow (300+ tech roles)
-     * Remotive (software developer feed)
+   - Automatically aggregates from 100% Free Public Job & Internship Feeds:
+     * JobsEveryHour Tech Internships & New Grad Software Engineer Feeds
+     * JobsEveryHour Engineering, Python, Java & React Feeds
+     * RemoteOK, Arbeitnow, Remotive (with strict India/target city filters)
      Requiring ZERO API keys or registration!
 2. Delivering Notifications:
    - send_telegram(): Delivers clean Markdown messages via Telegram Bot API.
@@ -17,6 +18,8 @@ Helper functions for:
 
 import os
 import sys
+import re
+import hashlib
 import logging
 from typing import Any, Dict, List, Optional, Set
 import requests
@@ -32,14 +35,60 @@ logging.basicConfig(
 )
 logger = logging.getLogger("jobpulse.tools")
 
+# Target India Metros (Strictly Hyderabad, Bengaluru/Bangalore, Mumbai, Pune, Chennai)
+TARGET_INDIA_CITIES = ["hyderabad", "bengaluru", "bangalore", "mumbai", "pune", "chennai"]
+
+# Locations to strictly disqualify
+NON_INDIA_DISQUALIFIERS = [
+    "indiana", "indianapolis", "usa only", "us only", "latam",
+    "canada", "germany", "united kingdom", "australia", "europe",
+    "emea", "uk only", "spain", "france", "berlin", "amsterdam", "london"
+]
+
 # Adzuna API constants for India
 ADZUNA_BASE_URL = "https://api.adzuna.com/v1/api/jobs/in/search"
-# Free Public Job APIs (No API key needed)
+
+# Free Public Job APIs
 REMOTIVE_URL = "https://remotive.com/api/remote-jobs"
 ARBEITNOW_URL = "https://www.arbeitnow.com/api/job-board-api"
 REMOTEOK_URL = "https://remoteok.com/api"
+
 # Default ntfy topic for phone push notifications
 DEFAULT_NTFY_TOPIC = "jobpulse-sriram-chityala"
+
+
+def is_india_target_location(
+    location: str,
+    title: str = "",
+    description: str = "",
+    allowed_cities: Optional[List[str]] = None
+) -> bool:
+    """
+    Check if a job location strictly matches India target cities:
+    Hyderabad, Bengaluru (Bangalore), Mumbai, Pune, Chennai in India ONLY.
+    Strictly rejects non-target cities and non-India locations (US, Europe, EMEA, LATAM, Canada, Indiana, etc.).
+    """
+    loc_clean = (location or "").lower()
+    full_text = f"{location} {title} {description}".lower()
+
+    # Reject foreign countries, regions, or US states
+    for disq in NON_INDIA_DISQUALIFIERS:
+        if re.search(rf"\b{re.escape(disq)}\b", loc_clean):
+            # Check if one of our target cities is explicitly present to avoid false rejections
+            if not any(re.search(rf"\b{c}\b", loc_clean) for c in TARGET_INDIA_CITIES):
+                return False
+
+    cities = [c.lower() for c in (allowed_cities or TARGET_INDIA_CITIES)]
+    # Target city must be explicitly present in location or full description
+    for city in cities:
+        if re.search(rf"\b{re.escape(city)}\b", loc_clean) or re.search(rf"\b{re.escape(city)}\b", full_text):
+            return True
+
+    # Accept remote within India (e.g. "Remote, India")
+    if "remote" in loc_clean and re.search(r"\bindia\b", loc_clean) and not re.search(r"\bindiana\b", loc_clean):
+        return True
+
+    return False
 
 
 def _fetch_from_adzuna(
@@ -85,117 +134,107 @@ def _fetch_from_adzuna(
     return jobs
 
 
-def _fetch_from_free_apis(query: str, limit: int = 50) -> List[Dict[str, Any]]:
+def _fetch_from_free_apis(
+    query: str,
+    limit: int = 50,
+    allowed_cities: Optional[List[str]] = None
+) -> List[Dict[str, Any]]:
     """
-    Fetch tech and developer jobs from 100% Free Public APIs (RemoteOK, Arbeitnow, Remotive).
-    Uses smart keyword token matching so variations like 'Java Software Engineer' or
-    'Python Backend Developer' are always captured.
+    Fetch tech and developer jobs + internships from 100% Free Public APIs.
+    Strictly filters for target locations: Hyderabad, Bengaluru, Mumbai, Pune, Chennai (India).
     Requires ZERO registration and ZERO API keys.
     """
-    logger.info("Aggregating from Free Public Job Feeds for query: '%s'", query)
+    logger.info("Aggregating from Free Public Feeds for query: '%s' (India Target Metros)", query)
     jobs: List[Dict[str, Any]] = []
     seen_urls: Set[str] = set()
 
     # Normalize search tokens
     tokens = [t.lower() for t in query.replace("/", " ").replace("-", " ").split() if len(t) > 2]
     if not tokens:
-        tokens = ["python", "java", "developer", "software"]
+        tokens = ["python", "java", "developer", "software", "intern", "internship"]
 
-    # 1. Fetch from RemoteOK API
-    try:
-        headers = {"User-Agent": "JobPulse-Agent/1.0"}
-        resp = requests.get(REMOTEOK_URL, headers=headers, timeout=12)
-        if resp.status_code == 200:
-            raw_remoteok = resp.json()
-            # First element is legal disclaimer, remaining are job dicts
-            remoteok_jobs = raw_remoteok[1:] if isinstance(raw_remoteok, list) and len(raw_remoteok) > 1 else []
-            for item in remoteok_jobs:
-                if not isinstance(item, dict):
-                    continue
-                url = item.get("url") or f"https://remoteok.com/l/{item.get('id')}"
-                if url in seen_urls:
-                    continue
-                
-                title = item.get("position") or item.get("title") or ""
-                tags = item.get("tags") or []
-                text_to_search = (title + " " + " ".join(tags) + " " + (item.get("description") or "")[:200]).lower()
+    # 1. Fetch from JobsEveryHour (Targeted India Internships & Tech roles)
+    jeh_endpoints = [
+        "https://jobseveryhour.com/api/v1/lists/tech-internships.json",
+        "https://jobseveryhour.com/api/v1/lists/new-grad-software-engineer.json",
+        "https://jobseveryhour.com/api/v1/categories/engineering.json",
+        "https://jobseveryhour.com/api/v1/skills/python.json",
+        "https://jobseveryhour.com/api/v1/skills/java.json",
+        "https://jobseveryhour.com/api/v1/skills/react.json",
+    ]
 
-                # Match if any token is present
-                if any(t in text_to_search for t in tokens):
-                    seen_urls.add(url)
-                    jobs.append({
-                        "id": f"remoteok-{item.get('id')}",
-                        "title": title.strip(),
-                        "company": (item.get("company") or "Tech Company").strip(),
-                        "location": item.get("location") or "Remote",
-                        "description": (item.get("description") or "")[:600].strip(),
-                        "salary_min": item.get("salary_min"),
-                        "salary_max": item.get("salary_max"),
-                        "contract_type": "full_time",
-                        "contract_time": "full_time",
-                        "redirect_url": url,
-                        "created": item.get("date", ""),
-                    })
-                    if len(jobs) >= limit:
-                        break
-            logger.info("Retrieved %d matching jobs from RemoteOK", len(jobs))
-    except Exception as exc:
-        logger.warning("RemoteOK fetch warning: %s", exc)
-
-    # 2. Fetch from Arbeitnow API
-    if len(jobs) < limit:
+    for ep in jeh_endpoints:
+        if len(jobs) >= limit:
+            break
         try:
-            resp = requests.get(ARBEITNOW_URL, timeout=12)
+            resp = requests.get(ep, timeout=10)
             if resp.status_code == 200:
-                arbeit_jobs = resp.json().get("data", [])
-                for item in arbeit_jobs:
+                feed_jobs = resp.json().get("jobs", [])
+                for item in feed_jobs:
                     url = item.get("url") or ""
                     if not url or url in seen_urls:
                         continue
-                    
+
                     title = item.get("title") or ""
-                    tags = item.get("tags") or []
-                    text_to_search = (title + " " + " ".join(tags)).lower()
+                    loc = item.get("location") or ""
+                    company = item.get("company") or "Tech Company"
 
-                    if any(t in text_to_search for t in tokens):
-                        seen_urls.add(url)
-                        jobs.append({
-                            "id": f"arbeit-{item.get('slug')}",
-                            "title": title.strip(),
-                            "company": (item.get("company_name") or "Innovative Co").strip(),
-                            "location": item.get("location") or ("Remote" if item.get("remote") else "Hybrid"),
-                            "description": (item.get("description") or "")[:600].strip(),
-                            "salary_min": None,
-                            "salary_max": None,
-                            "contract_type": "full-time",
-                            "contract_time": "full_time",
-                            "redirect_url": url,
-                            "created": str(item.get("created_at", "")),
-                        })
-                        if len(jobs) >= limit:
-                            break
-                logger.info("Total jobs after Arbeitnow: %d", len(jobs))
+                    # Verify strict India target location
+                    if not is_india_target_location(loc, title=title, allowed_cities=allowed_cities):
+                        continue
+
+                    searchable_text = f"{title} {company}".lower()
+                    # Filter by query tokens if specific role requested
+                    if tokens and not any(t in searchable_text for t in tokens):
+                        if not any(k in searchable_text for k in ["intern", "engineer", "developer"]):
+                            continue
+
+                    seen_urls.add(url)
+                    unique_id = f"jeh-{hashlib.md5(url.encode()).hexdigest()[:10]}"
+                    jobs.append({
+                        "id": unique_id,
+                        "title": title.strip(),
+                        "company": company.strip(),
+                        "location": loc.strip(),
+                        "description": f"Position at {company} in {loc}. Category: {item.get('category', 'Engineering')}.",
+                        "salary_min": None,
+                        "salary_max": None,
+                        "contract_type": "internship" if "intern" in title.lower() else "full_time",
+                        "contract_time": "full_time",
+                        "redirect_url": url,
+                        "created": item.get("posted", ""),
+                    })
+                    if len(jobs) >= limit:
+                        break
         except Exception as exc:
-            logger.warning("Arbeitnow fetch warning: %s", exc)
+            logger.debug("JobsEveryHour endpoint (%s) note: %s", ep, exc)
 
-    # 3. Fetch from Remotive API
+    logger.info("Retrieved %d India-based jobs/internships from JobsEveryHour", len(jobs))
+
+    # 2. Fetch from Remotive API (Filtered for India target cities)
     if len(jobs) < limit:
         try:
-            # Search with primary token or software-dev category
             search_param = tokens[0] if tokens else "developer"
-            resp = requests.get(REMOTIVE_URL, params={"category": "software-dev", "search": search_param, "limit": 20}, timeout=12)
+            resp = requests.get(REMOTIVE_URL, params={"category": "software-dev", "search": search_param, "limit": 20}, timeout=10)
             if resp.status_code == 200:
                 remotive_jobs = resp.json().get("jobs", [])
                 for item in remotive_jobs:
                     url = item.get("url") or ""
                     if not url or url in seen_urls:
                         continue
+                    loc = item.get("candidate_required_location") or "Remote"
+                    title = item.get("title") or "Developer"
+
+                    if not is_india_target_location(loc, title=title, allowed_cities=allowed_cities):
+                        continue
+
                     seen_urls.add(url)
+                    unique_id = f"remotive-{item.get('id')}"
                     jobs.append({
-                        "id": f"remotive-{item.get('id')}",
-                        "title": (item.get("title") or "Developer").strip(),
+                        "id": unique_id,
+                        "title": title.strip(),
                         "company": (item.get("company_name") or "Tech Company").strip(),
-                        "location": item.get("candidate_required_location") or "Remote",
+                        "location": loc.strip(),
                         "description": (item.get("description") or "")[:600].strip(),
                         "salary_min": None,
                         "salary_max": None,
@@ -207,7 +246,84 @@ def _fetch_from_free_apis(query: str, limit: int = 50) -> List[Dict[str, Any]]:
                     if len(jobs) >= limit:
                         break
         except Exception as exc:
-            logger.warning("Remotive fetch warning: %s", exc)
+            logger.debug("Remotive fetch note: %s", exc)
+
+    # 3. Fetch from RemoteOK API (Filtered for India Target Cities)
+    if len(jobs) < limit:
+        try:
+            headers = {"User-Agent": "JobPulse-Agent/1.0"}
+            resp = requests.get(REMOTEOK_URL, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                raw_remoteok = resp.json()
+                remoteok_jobs = raw_remoteok[1:] if isinstance(raw_remoteok, list) and len(raw_remoteok) > 1 else []
+                for item in remoteok_jobs:
+                    if not isinstance(item, dict):
+                        continue
+                    url = item.get("url") or f"https://remoteok.com/l/{item.get('id')}"
+                    if url in seen_urls:
+                        continue
+                    
+                    loc = item.get("location") or "Remote"
+                    title = item.get("position") or item.get("title") or ""
+                    
+                    if not is_india_target_location(loc, title=title, allowed_cities=allowed_cities):
+                        continue
+
+                    seen_urls.add(url)
+                    unique_id = f"remoteok-{item.get('id')}"
+                    jobs.append({
+                        "id": unique_id,
+                        "title": title.strip(),
+                        "company": (item.get("company") or "Tech Company").strip(),
+                        "location": loc.strip(),
+                        "description": (item.get("description") or "")[:600].strip(),
+                        "salary_min": item.get("salary_min"),
+                        "salary_max": item.get("salary_max"),
+                        "contract_type": "full_time",
+                        "contract_time": "full_time",
+                        "redirect_url": url,
+                        "created": item.get("date", ""),
+                    })
+                    if len(jobs) >= limit:
+                        break
+        except Exception as exc:
+            logger.debug("RemoteOK fetch note: %s", exc)
+
+    # 4. Fetch from Arbeitnow API (Filtered for India Target Cities)
+    if len(jobs) < limit:
+        try:
+            resp = requests.get(ARBEITNOW_URL, timeout=10)
+            if resp.status_code == 200:
+                arbeit_jobs = resp.json().get("data", [])
+                for item in arbeit_jobs:
+                    url = item.get("url") or ""
+                    if not url or url in seen_urls:
+                        continue
+                    loc = item.get("location") or ""
+                    title = item.get("title") or ""
+                    
+                    if not is_india_target_location(loc, title=title, allowed_cities=allowed_cities):
+                        continue
+
+                    seen_urls.add(url)
+                    unique_id = f"arbeit-{item.get('slug')}"
+                    jobs.append({
+                        "id": unique_id,
+                        "title": title.strip(),
+                        "company": (item.get("company_name") or "Innovative Co").strip(),
+                        "location": loc.strip(),
+                        "description": (item.get("description") or "")[:600].strip(),
+                        "salary_min": None,
+                        "salary_max": None,
+                        "contract_type": "full-time",
+                        "contract_time": "full_time",
+                        "redirect_url": url,
+                        "created": str(item.get("created_at", "")),
+                    })
+                    if len(jobs) >= limit:
+                        break
+        except Exception as exc:
+            logger.debug("Arbeitnow fetch note: %s", exc)
 
     return jobs[:limit]
 
@@ -215,16 +331,19 @@ def _fetch_from_free_apis(query: str, limit: int = 50) -> List[Dict[str, Any]]:
 def fetch_jobs(
     query: str,
     location: str = "Hyderabad",
+    locations: Optional[List[str]] = None,
     results_per_page: int = 30,
     page: int = 1
 ) -> List[Dict[str, Any]]:
     """
-    Fetch job listings:
-    - If ADZUNA_APP_ID and ADZUNA_APP_KEY are set in .env, uses the Adzuna API for India.
-    - Otherwise, automatically falls back to Free Public Job APIs requiring NO key!
+    Fetch job listings strictly for target India locations:
+    Hyderabad, Bengaluru, Mumbai, Pune, Chennai in India ONLY.
+    - If ADZUNA_APP_ID and ADZUNA_APP_KEY are set, uses Adzuna API for India.
+    - Otherwise, automatically aggregates from Free Public Job & Internship APIs.
     """
     app_id = os.getenv("ADZUNA_APP_ID")
     app_key = os.getenv("ADZUNA_APP_KEY")
+    target_locations = locations or [location]
 
     if app_id and app_key:
         try:
@@ -239,8 +358,8 @@ def fetch_jobs(
         except Exception as e:
             logger.warning("Adzuna API call failed (%s). Falling back to Free Public Job API...", e)
 
-    # Fallback to free public job feeds
-    return _fetch_from_free_apis(query=query, limit=results_per_page)
+    # Fallback to free public job feeds strictly filtered for target India locations
+    return _fetch_from_free_apis(query=query, limit=results_per_page, allowed_cities=target_locations)
 
 
 def fetch_ai_news(limit: int = 4) -> List[Dict[str, str]]:
@@ -362,11 +481,11 @@ def send_notification(message: str, title: str = "JobPulse Daily Digest") -> boo
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("JobPulse - Testing Free Aggregator & Delivery")
+    print("JobPulse - Testing India Target Aggregator & Delivery")
     print("=" * 60)
 
-    jobs = fetch_jobs(query="Python Java React", results_per_page=30)
-    print(f"\nFetched {len(jobs)} total jobs:")
+    jobs = fetch_jobs(query="Python Java React", locations=["Hyderabad", "Bengaluru", "Mumbai", "Pune", "Chennai"])
+    print(f"\nFetched {len(jobs)} total jobs in India:")
     for idx, j in enumerate(jobs[:10], start=1):
         print(f"[{idx:02d}] {j['title']} @ {j['company']} ({j['location']})")
         print(f"     URL: {j['redirect_url']}")

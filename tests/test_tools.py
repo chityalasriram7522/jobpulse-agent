@@ -4,7 +4,16 @@ Unit tests for tools.py (fetch_jobs)
 
 import pytest
 from unittest.mock import patch, MagicMock
-from tools import fetch_jobs, _fetch_from_adzuna, _fetch_from_free_apis, send_telegram, send_ntfy, send_notification, fetch_ai_news
+from tools import (
+    fetch_jobs,
+    _fetch_from_adzuna,
+    _fetch_from_free_apis,
+    send_telegram,
+    send_ntfy,
+    send_notification,
+    fetch_ai_news,
+    is_india_target_location
+)
 
 
 @pytest.fixture
@@ -80,7 +89,7 @@ def test_fetch_jobs_free_api_fallback(monkeypatch):
                 "id": 999,
                 "title": "Backend Python Engineer",
                 "company_name": "Open Source Tech",
-                "candidate_required_location": "Remote",
+                "candidate_required_location": "Hyderabad, India",
                 "description": "Python, SQLite, REST.",
                 "job_type": "full_time",
                 "url": "https://remotive.com/job/999",
@@ -95,6 +104,26 @@ def test_fetch_jobs_free_api_fallback(monkeypatch):
         assert jobs[0]["title"] == "Backend Python Engineer"
         assert jobs[0]["company"] == "Open Source Tech"
         assert jobs[0]["redirect_url"] == "https://remotive.com/job/999"
+
+
+def test_is_india_target_location_acceptance():
+    """Verify acceptance of target cities in India."""
+    assert is_india_target_location("Hyderabad, Telangana, India") is True
+    assert is_india_target_location("Bengaluru, Karnataka") is True
+    assert is_india_target_location("Bangalore - Bagmane Tech Park") is True
+    assert is_india_target_location("Mumbai, Maharashtra") is True
+    assert is_india_target_location("Pune, IND") is True
+    assert is_india_target_location("Chennai, Tamil Nadu") is True
+    assert is_india_target_location("Remote, India") is True
+
+
+def test_is_india_target_location_rejection():
+    """Verify strict rejection of non-target/foreign locations."""
+    assert is_india_target_location("Indianapolis, Indiana, United States") is False
+    assert is_india_target_location("LATAM, Europe, USA, Canada, APAC") is False
+    assert is_india_target_location("Berlin, Germany") is False
+    assert is_india_target_location("London, UK") is False
+    assert is_india_target_location("San Francisco, CA, USA") is False
 
 
 # -------------------------------------------------------------
