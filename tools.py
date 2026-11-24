@@ -4,8 +4,11 @@ JobPulse Tools Module
 Helper functions for:
 1. Fetching job listings:
    - Uses Adzuna Jobs API if ADZUNA_APP_ID & ADZUNA_APP_KEY are provided.
-   - Automatically falls back to 100% Free Public Job APIs (Remotive / Arbeitnow)
-     requiring ZERO API keys or registration when Adzuna credentials are not set!
+   - Automatically aggregates from 100% Free Public Job Feeds:
+     * RemoteOK (100+ fresh developer roles)
+     * Arbeitnow (300+ tech roles)
+     * Remotive (software developer feed)
+     Requiring ZERO API keys or registration!
 2. Delivering Notifications:
    - send_telegram(): Delivers clean Markdown messages via Telegram Bot API.
    - send_ntfy(): Delivers push notifications directly to user's phone via ntfy.sh (No account required).
@@ -15,7 +18,7 @@ Helper functions for:
 import os
 import sys
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 import requests
 from dotenv import load_dotenv
 
@@ -34,6 +37,7 @@ ADZUNA_BASE_URL = "https://api.adzuna.com/v1/api/jobs/in/search"
 # Free Public Job APIs (No API key needed)
 REMOTIVE_URL = "https://remotive.com/api/remote-jobs"
 ARBEITNOW_URL = "https://www.arbeitnow.com/api/job-board-api"
+REMOTEOK_URL = "https://remoteok.com/api"
 # Default ntfy topic for phone push notifications
 DEFAULT_NTFY_TOPIC = "jobpulse-sriram-chityala"
 
@@ -81,67 +85,129 @@ def _fetch_from_adzuna(
     return jobs
 
 
-def _fetch_from_free_apis(query: str, limit: int = 20) -> List[Dict[str, Any]]:
+def _fetch_from_free_apis(query: str, limit: int = 50) -> List[Dict[str, Any]]:
     """
-    Fetch tech and developer jobs from 100% Free Public APIs (Remotive / Arbeitnow).
+    Fetch tech and developer jobs from 100% Free Public APIs (RemoteOK, Arbeitnow, Remotive).
+    Uses smart keyword token matching so variations like 'Java Software Engineer' or
+    'Python Backend Developer' are always captured.
     Requires ZERO registration and ZERO API keys.
     """
-    logger.info("Using Free Public Job API (Zero API key required) for query: '%s'", query)
+    logger.info("Aggregating from Free Public Job Feeds for query: '%s'", query)
     jobs: List[Dict[str, Any]] = []
+    seen_urls: Set[str] = set()
 
-    # 1. Try Remotive API
+    # Normalize search tokens
+    tokens = [t.lower() for t in query.replace("/", " ").replace("-", " ").split() if len(t) > 2]
+    if not tokens:
+        tokens = ["python", "java", "developer", "software"]
+
+    # 1. Fetch from RemoteOK API
     try:
-        params = {"category": "software-dev", "limit": limit}
-        if query:
-            params["search"] = query
-        resp = requests.get(REMOTIVE_URL, params=params, timeout=15)
+        headers = {"User-Agent": "JobPulse-Agent/1.0"}
+        resp = requests.get(REMOTEOK_URL, headers=headers, timeout=12)
         if resp.status_code == 200:
-            remotive_jobs = resp.json().get("jobs", [])
-            for item in remotive_jobs:
-                jobs.append({
-                    "id": f"remotive-{item.get('id')}",
-                    "title": item.get("title", "Software Developer"),
-                    "company": item.get("company_name", "Tech Company"),
-                    "location": item.get("candidate_required_location") or "Remote",
-                    "description": item.get("description", "")[:600],
-                    "salary_min": None,
-                    "salary_max": None,
-                    "contract_type": item.get("job_type", "full_time"),
-                    "contract_time": "full_time",
-                    "redirect_url": item.get("url", ""),
-                    "created": item.get("publication_date", ""),
-                })
-    except Exception as exc:
-        logger.warning("Remotive API request failed: %s", exc)
+            raw_remoteok = resp.json()
+            # First element is legal disclaimer, remaining are job dicts
+            remoteok_jobs = raw_remoteok[1:] if isinstance(raw_remoteok, list) and len(raw_remoteok) > 1 else []
+            for item in remoteok_jobs:
+                if not isinstance(item, dict):
+                    continue
+                url = item.get("url") or f"https://remoteok.com/l/{item.get('id')}"
+                if url in seen_urls:
+                    continue
+                
+                title = item.get("position") or item.get("title") or ""
+                tags = item.get("tags") or []
+                text_to_search = (title + " " + " ".join(tags) + " " + (item.get("description") or "")[:200]).lower()
 
-    # 2. If we need more jobs, try Arbeitnow API
+                # Match if any token is present
+                if any(t in text_to_search for t in tokens):
+                    seen_urls.add(url)
+                    jobs.append({
+                        "id": f"remoteok-{item.get('id')}",
+                        "title": title.strip(),
+                        "company": (item.get("company") or "Tech Company").strip(),
+                        "location": item.get("location") or "Remote",
+                        "description": (item.get("description") or "")[:600].strip(),
+                        "salary_min": item.get("salary_min"),
+                        "salary_max": item.get("salary_max"),
+                        "contract_type": "full_time",
+                        "contract_time": "full_time",
+                        "redirect_url": url,
+                        "created": item.get("date", ""),
+                    })
+                    if len(jobs) >= limit:
+                        break
+            logger.info("Retrieved %d matching jobs from RemoteOK", len(jobs))
+    except Exception as exc:
+        logger.warning("RemoteOK fetch warning: %s", exc)
+
+    # 2. Fetch from Arbeitnow API
     if len(jobs) < limit:
         try:
-            resp = requests.get(ARBEITNOW_URL, timeout=15)
+            resp = requests.get(ARBEITNOW_URL, timeout=12)
             if resp.status_code == 200:
                 arbeit_jobs = resp.json().get("data", [])
-                query_lower = query.lower() if query else ""
                 for item in arbeit_jobs:
-                    title = item.get("title", "")
-                    if query_lower and (query_lower not in title.lower() and query_lower not in " ".join(item.get("tags", [])).lower()):
+                    url = item.get("url") or ""
+                    if not url or url in seen_urls:
                         continue
+                    
+                    title = item.get("title") or ""
+                    tags = item.get("tags") or []
+                    text_to_search = (title + " " + " ".join(tags)).lower()
+
+                    if any(t in text_to_search for t in tokens):
+                        seen_urls.add(url)
+                        jobs.append({
+                            "id": f"arbeit-{item.get('slug')}",
+                            "title": title.strip(),
+                            "company": (item.get("company_name") or "Innovative Co").strip(),
+                            "location": item.get("location") or ("Remote" if item.get("remote") else "Hybrid"),
+                            "description": (item.get("description") or "")[:600].strip(),
+                            "salary_min": None,
+                            "salary_max": None,
+                            "contract_type": "full-time",
+                            "contract_time": "full_time",
+                            "redirect_url": url,
+                            "created": str(item.get("created_at", "")),
+                        })
+                        if len(jobs) >= limit:
+                            break
+                logger.info("Total jobs after Arbeitnow: %d", len(jobs))
+        except Exception as exc:
+            logger.warning("Arbeitnow fetch warning: %s", exc)
+
+    # 3. Fetch from Remotive API
+    if len(jobs) < limit:
+        try:
+            # Search with primary token or software-dev category
+            search_param = tokens[0] if tokens else "developer"
+            resp = requests.get(REMOTIVE_URL, params={"category": "software-dev", "search": search_param, "limit": 20}, timeout=12)
+            if resp.status_code == 200:
+                remotive_jobs = resp.json().get("jobs", [])
+                for item in remotive_jobs:
+                    url = item.get("url") or ""
+                    if not url or url in seen_urls:
+                        continue
+                    seen_urls.add(url)
                     jobs.append({
-                        "id": f"arbeit-{item.get('slug')}",
-                        "title": title,
-                        "company": item.get("company_name", "Innovative Co"),
-                        "location": item.get("location") or ("Remote" if item.get("remote") else "Hybrid"),
-                        "description": item.get("description", "")[:600],
+                        "id": f"remotive-{item.get('id')}",
+                        "title": (item.get("title") or "Developer").strip(),
+                        "company": (item.get("company_name") or "Tech Company").strip(),
+                        "location": item.get("candidate_required_location") or "Remote",
+                        "description": (item.get("description") or "")[:600].strip(),
                         "salary_min": None,
                         "salary_max": None,
-                        "contract_type": "full-time",
+                        "contract_type": item.get("job_type", "full_time"),
                         "contract_time": "full_time",
-                        "redirect_url": item.get("url", ""),
-                        "created": str(item.get("created_at", "")),
+                        "redirect_url": url,
+                        "created": item.get("publication_date", ""),
                     })
                     if len(jobs) >= limit:
                         break
         except Exception as exc:
-            logger.warning("Arbeitnow API request failed: %s", exc)
+            logger.warning("Remotive fetch warning: %s", exc)
 
     return jobs[:limit]
 
@@ -149,7 +215,7 @@ def _fetch_from_free_apis(query: str, limit: int = 20) -> List[Dict[str, Any]]:
 def fetch_jobs(
     query: str,
     location: str = "Hyderabad",
-    results_per_page: int = 20,
+    results_per_page: int = 30,
     page: int = 1
 ) -> List[Dict[str, Any]]:
     """
@@ -173,7 +239,7 @@ def fetch_jobs(
         except Exception as e:
             logger.warning("Adzuna API call failed (%s). Falling back to Free Public Job API...", e)
 
-    # Fallback to free public job API
+    # Fallback to free public job feeds
     return _fetch_from_free_apis(query=query, limit=results_per_page)
 
 
@@ -265,20 +331,11 @@ def send_notification(message: str, title: str = "JobPulse Daily Digest") -> boo
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("JobPulse - Testing Delivery Tools")
+    print("JobPulse - Testing Free Aggregator & Delivery")
     print("=" * 60)
 
-    test_msg = (
-        "✨ *JobPulse Test Alert*\n\n"
-        "1. *Python / AI Engineer* @ *TechCorp*\n"
-        "   📍 Location: Hyderabad, India\n"
-        "   💰 Compensation: ₹6,00,000 / year\n"
-        "   💡 Match Reason: Perfect match for your Python and Gemini experience.\n"
-        "   🔗 [Apply](https://example.com)\n\n"
-        "Ready to deliver alerts directly to your phone!"
-    )
-
-    print("Sending test push notification via ntfy...")
-    success = send_ntfy(test_msg, title="JobPulse Test Notification")
-    print("Push notification result:", "SUCCESS" if success else "FAILED")
-    print(f"Check your phone app or visit: https://ntfy.sh/{os.getenv('NTFY_TOPIC', DEFAULT_NTFY_TOPIC)}")
+    jobs = fetch_jobs(query="Python Java React", results_per_page=30)
+    print(f"\nFetched {len(jobs)} total jobs:")
+    for idx, j in enumerate(jobs[:10], start=1):
+        print(f"[{idx:02d}] {j['title']} @ {j['company']} ({j['location']})")
+        print(f"     URL: {j['redirect_url']}")
