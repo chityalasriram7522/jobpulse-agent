@@ -2,9 +2,9 @@ name: JobPulse Daily Digest
 
 on:
   schedule:
-    # Runs every morning at 8:00 AM India Standard Time (IST)
-    # Calculation: 8:00 AM IST = 02:30 AM UTC (IST is UTC + 5:30)
-    - cron: '30 2 * * *'
+    # Runs every morning before 8:00 AM India Standard Time (IST)
+    # Calculation: 02:25 AM UTC = 7:55 AM IST (IST is UTC + 5:30), arriving promptly for 8:00 AM!
+    - cron: '25 2 * * *'
   workflow_dispatch: # Allows you to trigger the job manually anytime from the GitHub Actions tab
 
 # Permissions required to commit the SQLite database back to the repository

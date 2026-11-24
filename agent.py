@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
 # Import local tools and database memory
-from tools import fetch_jobs, send_telegram, send_notification
+from tools import fetch_jobs, send_telegram, send_notification, fetch_ai_news
 import db
 
 # Load local environment variables
@@ -255,22 +255,36 @@ def match_and_rank_jobs(
     return []
 
 
-def format_digest(matches: List[Dict[str, str]]) -> str:
-    """Format matched jobs into a clean, readable text digest."""
-    if not matches:
-        return "JobPulse Daily Digest: No matching openings found today."
-
+def format_digest(matches: List[Dict[str, str]], news: Optional[List[Dict[str, str]]] = None) -> str:
+    """Format matched jobs and daily AI/tech news into a clean morning digest."""
     lines = [
-        "✨ *JobPulse Daily Job & Internship Digest*",
-        f"Found {len(matches)} matching opening{'s' if len(matches) != 1 else ''} for you today:\n"
+        "✨ *JobPulse Daily Morning Briefing*",
+        "===================================="
     ]
 
-    for idx, job in enumerate(matches, start=1):
-        lines.append(f"{idx}. *{job['title']}* @ *{job['company']}*")
-        lines.append(f"   📍 Location: {job['location']}")
-        lines.append(f"   💰 Compensation: {job['stipend_or_salary']}")
-        lines.append(f"   💡 Match Reason: {job['match_reason']}")
-        lines.append(f"   🔗 [View & Apply]({job['link']})\n")
+    # Section 1: Top Job Matches
+    if matches:
+        lines.append(f"\n💼 *Top {len(matches)} Matching Openings for Sri Ram:*\n")
+        for idx, job in enumerate(matches, start=1):
+            lines.append(f"{idx}. *{job['title']}* @ *{job['company']}*")
+            lines.append(f"   📍 Location: {job['location']}")
+            lines.append(f"   💰 Compensation: {job['stipend_or_salary']}")
+            lines.append(f"   💡 Match Reason: {job['match_reason']}")
+            lines.append(f"   🔗 [View & Apply]({job['link']})\n")
+    else:
+        lines.append("\n💼 *Job Openings:* No new unread openings in this run.\n")
+
+    # Section 2: AI News & Current Affairs
+    if news:
+        lines.append("🌐 *Daily AI & Tech Current Affairs:*")
+        for item in news[:3]:
+            title = item.get("title", "").strip()
+            link = item.get("link", "").strip()
+            if link:
+                lines.append(f"• [{title}]({link})")
+            else:
+                lines.append(f"• {title}")
+        lines.append("")
 
     return "\n".join(lines).strip()
 
@@ -408,8 +422,9 @@ def run_agent(dry_run: bool = False, db_path: str = "sent_jobs.db") -> int:
             send_notification(f"⚠️ JobPulse failed: {error_msg}", title="JobPulse Failed")
         return 1
 
-    # Step 5: Display or Deliver
-    digest = format_digest(matches)
+    # Step 5: Fetch AI News & Format Morning Digest
+    ai_news = fetch_ai_news(limit=3)
+    digest = format_digest(matches, news=ai_news)
 
     if dry_run:
         print("\n" + "=" * 65)

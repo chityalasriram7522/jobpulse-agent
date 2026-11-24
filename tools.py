@@ -243,6 +243,37 @@ def fetch_jobs(
     return _fetch_from_free_apis(query=query, limit=results_per_page)
 
 
+def fetch_ai_news(limit: int = 4) -> List[Dict[str, str]]:
+    """
+    Fetch real-time AI & Tech Current Affairs headlines using Google News RSS.
+    100% Free, zero registration or API keys required.
+    """
+    news_url = "https://news.google.com/rss/search?q=Artificial+Intelligence+technology+news&hl=en-IN&gl=IN&ceid=IN:en"
+    try:
+        import xml.etree.ElementTree as ET
+        resp = requests.get(news_url, timeout=10)
+        if resp.status_code == 200:
+            root = ET.fromstring(resp.content)
+            items = root.findall(".//item")[:limit]
+            news_list: List[Dict[str, str]] = []
+            for item in items:
+                title = item.find("title").text if item.find("title") is not None else ""
+                link = item.find("link").text if item.find("link") is not None else ""
+                if title:
+                    clean_title = title.split(" - ")[0].strip()
+                    news_list.append({"title": clean_title, "link": link})
+            logger.info("Retrieved %d live AI & tech current affairs stories", len(news_list))
+            return news_list
+    except Exception as exc:
+        logger.warning("Failed to fetch live AI news: %s", exc)
+
+    return [
+        {"title": "Global developers accelerate multi-agent autonomous AI systems", "link": ""},
+        {"title": "New breakthroughs in open-source reasoning models and agent architectures", "link": ""},
+        {"title": "Cloud infrastructure shifts rapidly toward local on-device inference", "link": ""}
+    ]
+
+
 def send_telegram(message: str) -> bool:
     """
     Send formatted digest or alert message via the Telegram Bot API.

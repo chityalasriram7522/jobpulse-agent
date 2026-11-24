@@ -4,7 +4,7 @@ Unit tests for tools.py (fetch_jobs)
 
 import pytest
 from unittest.mock import patch, MagicMock
-from tools import fetch_jobs, _fetch_from_adzuna, _fetch_from_free_apis, send_telegram, send_ntfy, send_notification
+from tools import fetch_jobs, _fetch_from_adzuna, _fetch_from_free_apis, send_telegram, send_ntfy, send_notification, fetch_ai_news
 
 
 @pytest.fixture
@@ -151,3 +151,20 @@ def test_send_notification_dispatches_successfully():
         success = send_notification("Digest text")
         assert success is True
         mock_ntfy.assert_called_once()
+
+
+def test_fetch_ai_news_success():
+    """Test fetching and parsing AI news headlines."""
+    sample_xml = """<rss><channel>
+        <item><title>OpenAI Releases New Frontier Agent - TechNews</title><link>https://example.com/ai</link></item>
+        <item><title>Google Enhances Gemini Capabilities - AI Times</title><link>https://example.com/gemini</link></item>
+    </channel></rss>"""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.content = sample_xml.encode("utf-8")
+
+    with patch("requests.get", return_value=mock_resp):
+        news = fetch_ai_news(limit=2)
+        assert len(news) == 2
+        assert news[0]["title"] == "OpenAI Releases New Frontier Agent"
+        assert news[0]["link"] == "https://example.com/ai"
