@@ -176,7 +176,6 @@ Found 5 matching openings for you today:
    🔗 View & Apply: https://remotive.com/remote-jobs/software-development/tech-lead-full-stack-rails-engineer-2069746
 
 ...
-```
 
 ---
 
