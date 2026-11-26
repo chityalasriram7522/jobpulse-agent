@@ -157,7 +157,7 @@ JobPulse runs automatically in the cloud every morning at **8:00 AM IST (02:30 A
 
 ---
 
-## 📱 Sample Notification
+## 📱 Sample Notifications
 
 ```text
 ✨ JobPulse Daily Job & Internship Digest
