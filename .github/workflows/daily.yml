@@ -3,8 +3,8 @@ name: JobPulse Daily Digest
 on:
   schedule:
     # Runs every morning before 8:00 AM India Standard Time (IST)
-    # Calculation: 02:25 AM UTC = 7:55 AM IST (IST is UTC + 5:30), arriving promptly for 8:00 AM!
-    - cron: '25 2 * * *'
+    # Calculation: 02:13 AM UTC = 7:43 AM IST (off-peak minute to reduce GitHub cron queue delay)
+    - cron: '13 2 * * *'
   workflow_dispatch: # Allows you to trigger the job manually anytime from the GitHub Actions tab
 
 # Permissions required to commit the SQLite database back to the repository
@@ -35,7 +35,7 @@ jobs:
       - name: Run JobPulse Agent
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ secrets.GEMINI_MODEL || 'gemini-3.6-flash' }}
+          GEMINI_MODEL: ${{ secrets.GEMINI_MODEL || 'gemini-3.5-flash-lite' }}
           ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
           ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC || 'jobpulse-sriram-chityala' }}

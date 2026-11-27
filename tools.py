@@ -415,6 +415,15 @@ def send_telegram(message: str) -> bool:
 
     try:
         response = requests.post(url, json=payload, timeout=15)
+        if response.status_code == 400:
+            # Retry as plain text if Markdown entity parsing fails on stray underscores/asterisks
+            logger.warning("Telegram Markdown parse error (400); retrying as plain text...")
+            plain_payload = {
+                "chat_id": chat_id,
+                "text": message[:4090],
+                "disable_web_page_preview": False
+            }
+            response = requests.post(url, json=plain_payload, timeout=15)
         response.raise_for_status()
         logger.info("Successfully sent message to Telegram (chat_id: %s)", chat_id)
         return True
